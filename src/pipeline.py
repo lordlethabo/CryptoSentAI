@@ -1,116 +1,86 @@
-# CryptoSentAI Main Pipeline
-# This script orchestrates the entire AI workflow
-
 import pandas as pd
-import sqlite3
 
-from data_ingestion import fetch_crypto_prices
-from sentiment_model import analyze_sentiment
-from feature_engineering import build_features
-from ml_models import train_models, make_predictions
-from trading_strategy import generate_signal
-
-
-def log_prediction(predicted_price, actual_price=None):
-
-    conn = sqlite3.connect("data/sentiment_logs.db")
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS predictions (
-        date TEXT,
-        predicted_price REAL,
-        actual_price REAL
-    )
-    """)
-
-    from datetime import datetime
-    today = datetime.today().strftime("%Y-%m-%d")
-
-    cursor.execute(
-        "INSERT INTO predictions (date, predicted_price, actual_price) VALUES (?, ?, ?)",
-        (today, predicted_price, actual_price)
-    )
-
-    conn.commit()
-    conn.close()
+from src.data_ingestion import fetch_crypto_prices
+from src.sentiment_model import analyze_sentiment
+from src.feature_engineering import build_features
+from src.ml_models import train_models, make_predictions
+from src.lstm_model import train_lstm, predict_lstm
+from src.trading_strategy import generate_signal
+from src.backtesting import backtest_strategy
 
 
 def run_pipeline(api_key, api_secret, symbol="BTCUSDT"):
 
     print("Starting CryptoSentAI pipeline")
-    print("--------------------------------")
 
-    # STEP 1: Data Ingestion
-    print("Fetching cryptocurrency market data...")
+    print("Fetching market data...")
     df_price = fetch_crypto_prices(api_key, api_secret, symbol)
 
     if df_price is None or df_price.empty:
-        print("Market data fetch failed.")
-        return
+        raise ValueError("Failed to retrieve market data")
 
-    print("Market data loaded:", len(df_price), "rows")
-
-    # STEP 2: Sentiment Analysis
     print("Running sentiment analysis...")
-
     sentiment_score = analyze_sentiment()
 
-    print("Sentiment score:", sentiment_score)
-
-    # STEP 3: Feature Engineering
-    print("Building ML features...")
-
+    print("Building feature dataset...")
     df_features = build_features(df_price, sentiment_score)
 
-    print("Feature dataset size:", df_features.shape)
-
-    # STEP 4: Train Models
     print("Training machine learning models...")
-
     lr_model, rf_model = train_models(df_features)
 
-    # STEP 5: Generate Predictions
-    print("Generating price prediction...")
+    print("Generating ML ensemble prediction...")
+    ml_prediction = make_predictions(
+        lr_model,
+        rf_model,
+        df_features
+    )
 
-    prediction = make_predictions(lr_model, rf_model, df_features)
+    print("Training LSTM model...")
+    lstm_model, lstm_scaler = train_lstm(df_price)
+
+    print("Generating LSTM prediction...")
+    lstm_prediction = predict_lstm(
+        lstm_model,
+        lstm_scaler,
+        df_price
+    )
+
+    print("Combining predictions...")
+
+    prediction = (
+        ml_prediction +
+        lstm_prediction
+    ) / 2
 
     current_price = df_features["close"].iloc[-1]
 
-    print("Current BTC Price:", current_price)
-    print("Predicted Next Price:", prediction)
-
-    # STEP 6: Generate Trading Signal
     print("Generating trading signal...")
 
-    signal = generate_signal(prediction, df_features)
+    signal = generate_signal(
+        prediction,
+        df_features
+    )
 
-    print("Trading Signal:", signal)
+    print("Running historical backtest...")
 
-    # STEP 7: Store prediction
-    print("Logging prediction to database...")
+    backtest_results = backtest_strategy(
+        df_features,
+        lr_model,
+        rf_model,
+        generate_signal
+    )
 
-    log_prediction(prediction)
-
-    print("--------------------------------")
-    print("Pipeline completed successfully")
+    print("Pipeline execution complete")
 
     return {
+
         "current_price": current_price,
+
         "prediction": prediction,
+
         "signal": signal,
-        "sentiment": sentiment_score
+
+        "sentiment": sentiment_score,
+
+        "backtest": backtest_results
     }
-
-
-if __name__ == "__main__":
-
-    print("CryptoSentAI Execution")
-
-    api_key = input("Enter Binance API Key: ")
-    api_secret = input("Enter Binance API Secret: ")
-
-    result = run_pipeline(api_key, api_secret)
-
-    print("\nFinal Output")
-    print(result)
