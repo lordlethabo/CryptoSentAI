@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 from binance.client import Client
 from pycoingecko import CoinGeckoAPI
 
-
 load_dotenv()
 
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
@@ -99,6 +98,6 @@ def fetch_crypto_prices(api_key, api_secret, symbol):
 
         print("Binance failed:", e)
 
-        print("Falling back to CoinGecko")
+        print("Using CoinGecko fallback")
 
         return fetch_from_coingecko(symbol)
