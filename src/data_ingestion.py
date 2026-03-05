@@ -1,81 +1,33 @@
-from binance.client import Client
+import os
 import pandas as pd
+from dotenv import load_dotenv
+from binance.client import Client
+from pycoingecko import CoinGeckoAPI
 
 
-def fetch_crypto_prices(api_key, api_secret, symbol="BTCUSDT", days=60):
-    """
-    Fetch historical cryptocurrency prices from Binance.
+load_dotenv()
 
-    Parameters
-    ----------
-    api_key : str
-        Binance API key
-    api_secret : str
-        Binance API secret
-    symbol : str
-        Trading pair (default BTCUSDT)
-    days : int
-        Number of historical days to fetch
+BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
+BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET")
 
-    Returns
-    -------
-    DataFrame
-        Clean dataframe containing timestamp and close price
-    """
-
-    try:
-
-        client = Client(api_key, api_secret)
-
-        klines = client.get_historical_klines(
-            symbol,
-            Client.KLINE_INTERVAL_1DAY,
-            f"{days} day ago UTC"
-        )
-
-        df = pd.DataFrame(klines, columns=[
-            "timestamp",
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume",
-            "close_time",
-            "quote_asset_volume",
-            "number_of_trades",
-            "taker_buy_base",
-            "taker_buy_quote",
-            "ignore"
-        ])
-
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-
-        numeric_cols = ["open", "high", "low", "close", "volume"]
-
-        for col in numeric_cols:
-            df[col] = df[col].astype(float)
-
-        df = df[["timestamp", "open", "high", "low", "close", "volume"]]
-
-        df = df.sort_values("timestamp")
-
-        df.reset_index(drop=True, inplace=True)
-
-        return df
-
-    except Exception as e:
-
-        print("Error fetching Binance data:", e)
-
-        return None
+LOOKBACK_DAYS = int(os.getenv("PRICE_LOOKBACK_DAYS", 60))
 
 
-def validate_market_data(df):
-    """
-    Ensures the dataframe has required fields for ML pipeline.
-    """
+def fetch_from_binance(symbol):
 
-    required_columns = [
+    client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
+
+    klines = client.get_historical_klines(
+        symbol,
+        Client.KLINE_INTERVAL_1DAY,
+        f"{LOOKBACK_DAYS} day ago UTC"
+    )
+
+    df = pd.DataFrame(klines)
+
+    df = df.iloc[:, 0:6]
+
+    df.columns = [
         "timestamp",
         "open",
         "high",
@@ -84,8 +36,69 @@ def validate_market_data(df):
         "volume"
     ]
 
-    for col in required_columns:
-        if col not in df.columns:
-            raise ValueError(f"Missing column: {col}")
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
 
-    return True
+    numeric_cols = ["open", "high", "low", "close", "volume"]
+
+    for col in numeric_cols:
+        df[col] = df[col].astype(float)
+
+    df = df.sort_values("timestamp")
+
+    df.reset_index(drop=True, inplace=True)
+
+    return df
+
+
+def fetch_from_coingecko(symbol):
+
+    cg = CoinGeckoAPI()
+
+    coin = symbol.replace("USDT", "").lower()
+
+    data = cg.get_coin_market_chart_by_id(
+        coin,
+        "usd",
+        LOOKBACK_DAYS
+    )
+
+    prices = data["prices"]
+
+    df = pd.DataFrame(prices, columns=["timestamp", "close"])
+
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+
+    df["open"] = df["close"]
+    df["high"] = df["close"]
+    df["low"] = df["close"]
+    df["volume"] = 0
+
+    df = df[[
+        "timestamp",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+    ]]
+
+    return df
+
+
+def fetch_crypto_prices(api_key, api_secret, symbol):
+
+    try:
+
+        print("Fetching data from Binance")
+
+        df = fetch_from_binance(symbol)
+
+        return df
+
+    except Exception as e:
+
+        print("Binance failed:", e)
+
+        print("Falling back to CoinGecko")
+
+        return fetch_from_coingecko(symbol)
