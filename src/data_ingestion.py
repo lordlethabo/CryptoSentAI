@@ -4,22 +4,27 @@ from dotenv import load_dotenv
 from binance.client import Client
 from pycoingecko import CoinGeckoAPI
 
+
+# Load environment variables
 load_dotenv()
 
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
 BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET")
 
-LOOKBACK_DAYS = int(os.getenv("PRICE_LOOKBACK_DAYS", 60))
+PRICE_LOOKBACK_DAYS = int(os.getenv("PRICE_LOOKBACK_DAYS", 60))
 
 
 def fetch_from_binance(symbol):
+    """
+    Fetch OHLCV price data from Binance
+    """
 
     client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
 
     klines = client.get_historical_klines(
         symbol,
         Client.KLINE_INTERVAL_1DAY,
-        f"{LOOKBACK_DAYS} day ago UTC"
+        f"{PRICE_LOOKBACK_DAYS} day ago UTC"
     )
 
     df = pd.DataFrame(klines)
@@ -50,6 +55,9 @@ def fetch_from_binance(symbol):
 
 
 def fetch_from_coingecko(symbol):
+    """
+    Fallback data source if Binance fails
+    """
 
     cg = CoinGeckoAPI()
 
@@ -58,7 +66,7 @@ def fetch_from_coingecko(symbol):
     data = cg.get_coin_market_chart_by_id(
         coin,
         "usd",
-        LOOKBACK_DAYS
+        PRICE_LOOKBACK_DAYS
     )
 
     prices = data["prices"]
@@ -72,23 +80,28 @@ def fetch_from_coingecko(symbol):
     df["low"] = df["close"]
     df["volume"] = 0
 
-    df = df[[
-        "timestamp",
-        "open",
-        "high",
-        "low",
-        "close",
-        "volume"
-    ]]
+    df = df[
+        [
+            "timestamp",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+        ]
+    ]
 
     return df
 
 
 def fetch_crypto_prices(api_key, api_secret, symbol):
+    """
+    Main function used by pipeline
+    """
 
     try:
 
-        print("Fetching data from Binance")
+        print("Fetching market data from Binance")
 
         df = fetch_from_binance(symbol)
 
@@ -96,8 +109,8 @@ def fetch_crypto_prices(api_key, api_secret, symbol):
 
     except Exception as e:
 
-        print("Binance failed:", e)
+        print("Binance data fetch failed:", e)
 
-        print("Using CoinGecko fallback")
+        print("Switching to CoinGecko fallback")
 
         return fetch_from_coingecko(symbol)
