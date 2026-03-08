@@ -1,53 +1,41 @@
-
 import pandas as pd
-import numpy as np
 
 
 def build_features(df, sentiment_score):
     """
-    Build machine learning features from raw crypto market data.
-
-    Parameters
-    ----------
-    df : DataFrame
-        Market data from Binance ingestion
-    sentiment_score : float
-        Aggregated sentiment score from NLP models
-
-    Returns
-    -------
-    DataFrame
-        Feature engineered dataset ready for ML models
+    Build machine learning features from market data
+    and sentiment signal.
     """
 
     df = df.copy()
 
-    # Add sentiment feature
+    # Add sentiment as a feature
     df["sentiment"] = sentiment_score
 
-    # Price change percentage
+    # Price returns
     df["price_change"] = df["close"].pct_change()
 
-    # Rolling mean (short-term trend)
-    df["rolling_mean"] = df["close"].rolling(window=3).mean()
+    # Rolling statistics
+    df["rolling_mean_3"] = df["close"].rolling(window=3).mean()
+    df["rolling_mean_7"] = df["close"].rolling(window=7).mean()
 
-    # Rolling standard deviation (volatility)
+    # Volatility
     df["volatility"] = df["close"].rolling(window=5).std()
 
-    # Momentum indicator
+    # Momentum
     df["momentum"] = df["close"] - df["close"].shift(3)
 
-    # Simple moving averages
+    # Moving averages
     df["sma_5"] = df["close"].rolling(window=5).mean()
     df["sma_10"] = df["close"].rolling(window=10).mean()
 
     # Exponential moving average
-    df["ema_10"] = df["close"].ewm(span=10, adjust=False).mean()
+    df["ema_10"] = df["close"].ewm(span=10).mean()
 
-    # Relative Strength Index (RSI)
-    df["rsi"] = compute_rsi(df["close"])
+    # Relative Strength Index
+    df["rsi"] = calculate_rsi(df["close"], period=14)
 
-    # Target variable (next price)
+    # Target variable (next step price)
     df["target"] = df["close"].shift(-1)
 
     df = df.dropna()
@@ -57,7 +45,7 @@ def build_features(df, sentiment_score):
     return df
 
 
-def compute_rsi(series, period=14):
+def calculate_rsi(series, period=14):
     """
     Compute Relative Strength Index (RSI).
     """
@@ -77,20 +65,17 @@ def compute_rsi(series, period=14):
     return rsi
 
 
-def normalize_features(df):
+def get_feature_columns():
     """
-    Normalize features for ML models.
+    List of ML features used for training.
     """
 
-    from sklearn.preprocessing import MinMaxScaler
-
-    scaler = MinMaxScaler()
-
-    feature_cols = [
+    return [
         "close",
         "sentiment",
         "price_change",
-        "rolling_mean",
+        "rolling_mean_3",
+        "rolling_mean_7",
         "volatility",
         "momentum",
         "sma_5",
@@ -98,7 +83,3 @@ def normalize_features(df):
         "ema_10",
         "rsi"
     ]
-
-    df[feature_cols] = scaler.fit_transform(df[feature_cols])
-
-    return df, scaler
