@@ -1,21 +1,10 @@
 import numpy as np
 
 
-def normalize(value, min_val, max_val):
-    """
-    Normalize a value between 0 and 1.
-    """
-
-    if max_val - min_val == 0:
-        return 0
-
-    return (value - min_val) / (max_val - min_val)
-
-
 def model_agreement_score(predictions):
     """
-    Measures how closely models agree with each other.
-    Lower standard deviation = higher agreement.
+    Measure agreement between multiple model predictions.
+    Lower variance means higher agreement.
     """
 
     mean_pred = np.mean(predictions)
@@ -34,27 +23,27 @@ def model_agreement_score(predictions):
 
 def price_movement_strength(prediction, current_price):
     """
-    Measures strength of predicted move.
-    Larger moves = stronger signals.
+    Measure how significant the predicted move is.
+    Small moves are usually noise.
     """
 
-    move = abs(prediction - current_price) / current_price
+    movement = abs(prediction - current_price) / current_price
 
-    move_score = min(move * 5, 1)
+    score = min(movement * 5, 1)
 
-    return move_score
+    return score
 
 
-def sentiment_strength(sentiment):
+def sentiment_strength(sentiment_score):
     """
-    Convert sentiment score into confidence component.
+    Convert sentiment score into a confidence contribution.
     """
 
-    sentiment_score = abs(sentiment)
+    sentiment_value = abs(sentiment_score)
 
-    sentiment_score = min(sentiment_score, 1)
+    sentiment_value = max(0, min(sentiment_value, 1))
 
-    return sentiment_score
+    return sentiment_value
 
 
 def calculate_confidence(
@@ -83,9 +72,7 @@ def calculate_confidence(
         current_price
     )
 
-    sentiment = sentiment_strength(
-        sentiment_score
-    )
+    sentiment = sentiment_strength(sentiment_score)
 
     confidence = (
         (agreement * 0.4) +
