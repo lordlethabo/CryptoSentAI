@@ -1,74 +1,147 @@
-
+import numpy as np
 import pandas as pd
 
+from src.feature_engineering import get_feature_columns
 
-def backtest_strategy(df, lr_model, rf_model, signal_function, initial_capital=10000):
 
-    """
-    Runs historical trading simulation using the trained models.
-    """
+def backtest_strategy(df, lr_model, rf_model, signal_function,
+                      initial_capital=10000):
 
     capital = initial_capital
-    crypto = 0
+    asset = 0
 
-    portfolio_history = []
-    signals = []
+    trade_history = []
+    portfolio_values = []
 
-    for i in range(10, len(df) - 1):
+    features = get_feature_columns()
 
-        window = df.iloc[:i]
+    for i in range(20, len(df) - 1):
 
-        X = window[["close", "sentiment", "price_change", "rolling_mean"]]
-        y = window["target"]
+        train = df.iloc[:i]
 
-        lr_model.fit(X, y)
-        rf_model.fit(X, y)
+        X_train = train[features]
+        y_train = train["target"]
 
-        current_row = df.iloc[i:i+1]
+        lr_model.fit(X_train, y_train)
+        rf_model.fit(X_train, y_train)
 
-        features = current_row[["close", "sentiment", "price_change", "rolling_mean"]]
+        row = df.iloc[i:i+1]
 
-        pred_lr = lr_model.predict(features.values)[0]
-        pred_rf = rf_model.predict(features.values)[0]
+        X_test = row[features]
 
-        prediction = (pred_lr + pred_rf) / 2
+        lr_pred = lr_model.predict(X_test)[0]
+        rf_pred = rf_model.predict(X_test)[0]
 
-        current_price = current_row["close"].values[0]
+        prediction = (lr_pred + rf_pred) / 2
 
-        signal = signal_function(prediction, window)
+        price = row["close"].values[0]
 
-        signals.append(signal)
+        signal = signal_function(prediction, train)
 
         if signal == "BUY" and capital > 0:
 
-            crypto = capital / current_price
+            asset = capital / price
             capital = 0
 
-        elif signal == "SELL" and crypto > 0:
+            trade_history.append({
+                "type": "BUY",
+                "price": price
+            })
 
-            capital = crypto * current_price
-            crypto = 0
+        elif signal == "SELL" and asset > 0:
 
-        portfolio_value = capital + crypto * current_price
+            capital = asset * price
+            asset = 0
 
-        portfolio_history.append(portfolio_value)
+            trade_history.append({
+                "type": "SELL",
+                "price": price
+            })
+
+        portfolio_value = capital + asset * price
+
+        portfolio_values.append(portfolio_value)
 
     final_price = df["close"].iloc[-1]
 
-    final_portfolio_value = capital + crypto * final_price
+    final_value = capital + asset * final_price
 
     buy_hold_value = initial_capital * (final_price / df["close"].iloc[0])
 
-    strategy_return = ((final_portfolio_value - initial_capital) / initial_capital) * 100
-    buy_hold_return = ((buy_hold_value - initial_capital) / initial_capital) * 100
+    strategy_return = (final_value - initial_capital) / initial_capital
 
-    results = {
-        "final_portfolio_value": final_portfolio_value,
+    buy_hold_return = (buy_hold_value - initial_capital) / initial_capital
+
+    stats = calculate_statistics(portfolio_values, trade_history)
+
+    return {
+        "initial_capital": initial_capital,
+        "final_portfolio_value": final_value,
         "buy_hold_value": buy_hold_value,
-        "strategy_return_percent": strategy_return,
-        "buy_hold_return_percent": buy_hold_return,
-        "portfolio_history": portfolio_history,
-        "signals": signals
+        "strategy_return_percent": strategy_return * 100,
+        "buy_hold_return_percent": buy_hold_return * 100,
+        "trade_history": trade_history,
+        "portfolio_history": portfolio_values,
+        "statistics": stats
     }
 
-    return results
+
+def calculate_statistics(portfolio_values, trades):
+
+    if len(portfolio_values) == 0:
+
+        return {}
+
+    returns = np.diff(portfolio_values) / portfolio_values[:-1]
+
+    avg_return = np.mean(returns) if len(returns) > 0 else 0
+
+    volatility = np.std(returns) if len(returns) > 0 else 0
+
+    sharpe_ratio = avg_return / volatility if volatility > 0 else 0
+
+    max_drawdown = calculate_max_drawdown(portfolio_values)
+
+    wins = 0
+    losses = 0
+
+    for i in range(1, len(trades)):
+
+        if trades[i]["type"] == "SELL":
+
+            if trades[i]["price"] > trades[i-1]["price"]:
+                wins += 1
+            else:
+                losses += 1
+
+    total_trades = wins + losses
+
+    win_rate = wins / total_trades if total_trades > 0 else 0
+
+    return {
+        "total_trades": total_trades,
+        "wins": wins,
+        "losses": losses,
+        "win_rate": win_rate,
+        "sharpe_ratio": sharpe_ratio,
+        "max_drawdown": max_drawdown
+    }
+
+
+def calculate_max_drawdown(portfolio_values):
+
+    peak = portfolio_values[0]
+
+    max_dd = 0
+
+    for value in portfolio_values:
+
+        if value > peak:
+            peak = value
+
+        dd = (peak - value) / peak
+
+        if dd > max_dd:
+            max_dd = dd
+
+    return max_dd
