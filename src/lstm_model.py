@@ -1,13 +1,15 @@
 import numpy as np
+
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
+from tensorflow.keras.layers import LSTM, Dense, Dropout
 from sklearn.preprocessing import MinMaxScaler
 
 
-def create_sequences(data, window_size=10):
-    """
-    Convert time series data into LSTM sequences.
-    """
+# --------------------------------------------------
+# Create time-series sequences
+# --------------------------------------------------
+
+def create_sequences(data, window_size=20):
 
     X = []
     y = []
@@ -15,15 +17,17 @@ def create_sequences(data, window_size=10):
     for i in range(len(data) - window_size):
 
         X.append(data[i:i + window_size])
+
         y.append(data[i + window_size])
 
     return np.array(X), np.array(y)
 
 
-def prepare_lstm_data(df, window_size=10):
-    """
-    Prepare closing price data for LSTM training.
-    """
+# --------------------------------------------------
+# Prepare LSTM data
+# --------------------------------------------------
+
+def prepare_lstm_data(df, window_size=20):
 
     prices = df["close"].values.reshape(-1, 1)
 
@@ -38,15 +42,30 @@ def prepare_lstm_data(df, window_size=10):
     return X, y, scaler
 
 
-def build_lstm_model(window_size=10):
-    """
-    Build LSTM neural network.
-    """
+# --------------------------------------------------
+# Build LSTM network
+# --------------------------------------------------
+
+def build_lstm_model(window_size):
 
     model = Sequential()
 
-    model.add(LSTM(50, return_sequences=True, input_shape=(window_size, 1)))
-    model.add(LSTM(50))
+    model.add(
+        LSTM(
+            64,
+            return_sequences=True,
+            input_shape=(window_size, 1)
+        )
+    )
+
+    model.add(Dropout(0.2))
+
+    model.add(LSTM(64))
+
+    model.add(Dropout(0.2))
+
+    model.add(Dense(32, activation="relu"))
+
     model.add(Dense(1))
 
     model.compile(
@@ -57,10 +76,11 @@ def build_lstm_model(window_size=10):
     return model
 
 
-def train_lstm(df, window_size=10, epochs=10):
-    """
-    Train LSTM model.
-    """
+# --------------------------------------------------
+# Train model
+# --------------------------------------------------
+
+def train_lstm(df, window_size=20, epochs=20):
 
     X, y, scaler = prepare_lstm_data(df, window_size)
 
@@ -70,17 +90,18 @@ def train_lstm(df, window_size=10, epochs=10):
         X,
         y,
         epochs=epochs,
-        batch_size=16,
+        batch_size=32,
         verbose=0
     )
 
     return model, scaler
 
 
-def predict_lstm(model, scaler, df, window_size=10):
-    """
-    Generate next price prediction using LSTM.
-    """
+# --------------------------------------------------
+# Generate prediction
+# --------------------------------------------------
+
+def predict_lstm(model, scaler, df, window_size=20):
 
     prices = df["close"].values.reshape(-1, 1)
 
