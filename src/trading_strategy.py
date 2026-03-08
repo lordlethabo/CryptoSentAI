@@ -1,69 +1,69 @@
-def generate_signal(predicted_price, df,
-                    buy_threshold=0.02,
-                    sell_threshold=0.02):
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Thresholds for signal generation
+BUY_THRESHOLD = float(os.getenv("BUY_THRESHOLD", 0.02))
+SELL_THRESHOLD = float(os.getenv("SELL_THRESHOLD", 0.02))
+
+
+def generate_signal(predicted_price, df):
     """
-    Generate a trading signal based on predicted price movement.
-
-    Parameters
-    ----------
-    predicted_price : float
-        Model predicted price
-    df : DataFrame
-        Feature dataframe
-    buy_threshold : float
-        Minimum upward movement to trigger buy
-    sell_threshold : float
-        Minimum downward movement to trigger sell
-
-    Returns
-    -------
-    str
-        BUY, SELL, or HOLD
+    Generate BUY / SELL / HOLD signal
+    based on predicted price movement.
     """
 
     current_price = df["close"].iloc[-1]
 
-    change = (predicted_price - current_price) / current_price
+    change_ratio = (predicted_price - current_price) / current_price
 
-    if change > buy_threshold:
+    if change_ratio > BUY_THRESHOLD:
+
         return "BUY"
 
-    elif change < -sell_threshold:
+    elif change_ratio < -SELL_THRESHOLD:
+
         return "SELL"
 
     else:
+
         return "HOLD"
 
 
-def position_size(capital, risk_per_trade=0.02):
+def calculate_position_size(capital, risk_per_trade=0.02):
     """
-    Calculate position size based on risk management.
+    Determine position size based on risk management.
     """
 
-    return capital * risk_per_trade
+    position = capital * risk_per_trade
+
+    return position
 
 
-def apply_stop_loss(entry_price, current_price, stop_loss_pct=0.03):
+def stop_loss_trigger(entry_price, current_price, stop_loss_pct=0.03):
     """
-    Stop loss check.
+    Determine if stop loss should trigger.
     """
 
     loss = (entry_price - current_price) / entry_price
 
-    if loss > stop_loss_pct:
+    if loss >= stop_loss_pct:
+
         return True
 
     return False
 
 
-def apply_take_profit(entry_price, current_price, take_profit_pct=0.05):
+def take_profit_trigger(entry_price, current_price, take_profit_pct=0.05):
     """
-    Take profit condition.
+    Determine if take profit should trigger.
     """
 
     gain = (current_price - entry_price) / entry_price
 
-    if gain > take_profit_pct:
+    if gain >= take_profit_pct:
+
         return True
 
     return False
