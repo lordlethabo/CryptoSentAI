@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from src.data_ingestion import fetch_crypto_prices
 from src.telegram_signals import fetch_signals
 from src.sentiment_model import analyze_sentiment
-from src.feature_engineering import build_features, get_feature_columns
+from src.feature_engineering import build_features
 from src.ml_models import train_models, predict_next_price
 from src.lstm_model import train_lstm, predict_lstm
 from src.confidence import calculate_confidence
@@ -14,9 +14,9 @@ from src.trade_execution import execute_trade
 from src.backtesting import backtest_strategy
 
 
-# -------------------------------------------------
-# Load environment configuration
-# -------------------------------------------------
+# ------------------------------------------------
+# Load environment variables
+# ------------------------------------------------
 
 load_dotenv()
 
@@ -33,9 +33,9 @@ CHANNEL_2 = os.getenv("TELEGRAM_CHANNEL_2")
 TELEGRAM_LIMIT = int(os.getenv("TELEGRAM_MESSAGE_LIMIT", 50))
 
 
-# -------------------------------------------------
-# Telegram collection
-# -------------------------------------------------
+# ------------------------------------------------
+# Telegram message collector
+# ------------------------------------------------
 
 async def collect_telegram_messages():
 
@@ -57,24 +57,25 @@ async def collect_telegram_messages():
 
     except Exception as e:
 
-        print("Telegram fetch error:", e)
+        print("Telegram error:", e)
 
     return messages
 
 
-# -------------------------------------------------
+# ------------------------------------------------
 # Main AI pipeline
-# -------------------------------------------------
+# ------------------------------------------------
 
 def run_pipeline(symbol=SYMBOL):
 
-    print("\n----------------------------------")
-    print("Starting CryptoSentAI pipeline")
-    print("----------------------------------\n")
+    print("\n==============================")
+    print("CryptoSentAI Pipeline Start")
+    print("==============================\n")
 
-    # ----------------------------------
-    # Step 1: Fetch market data
-    # ----------------------------------
+
+    # ---------------------------------
+    # STEP 1: Fetch Market Data
+    # ---------------------------------
 
     print("Fetching market data...")
 
@@ -91,9 +92,9 @@ def run_pipeline(symbol=SYMBOL):
     print("Market rows:", len(df_price))
 
 
-    # ----------------------------------
-    # Step 2: Collect Telegram signals
-    # ----------------------------------
+    # ---------------------------------
+    # STEP 2: Telegram Signals
+    # ---------------------------------
 
     print("Fetching Telegram signals...")
 
@@ -101,14 +102,14 @@ def run_pipeline(symbol=SYMBOL):
         collect_telegram_messages()
     )
 
-    print("Messages collected:", len(telegram_messages))
+    print("Signals collected:", len(telegram_messages))
 
 
-    # ----------------------------------
-    # Step 3: Sentiment analysis
-    # ----------------------------------
+    # ---------------------------------
+    # STEP 3: Sentiment Analysis
+    # ---------------------------------
 
-    print("Running sentiment analysis...")
+    print("Analyzing sentiment...")
 
     sentiment_score = analyze_sentiment(
         telegram_messages
@@ -117,9 +118,9 @@ def run_pipeline(symbol=SYMBOL):
     print("Sentiment score:", sentiment_score)
 
 
-    # ----------------------------------
-    # Step 4: Feature engineering
-    # ----------------------------------
+    # ---------------------------------
+    # STEP 4: Feature Engineering
+    # ---------------------------------
 
     print("Building ML features...")
 
@@ -129,9 +130,9 @@ def run_pipeline(symbol=SYMBOL):
     )
 
 
-    # ----------------------------------
-    # Step 5: Train ML models
-    # ----------------------------------
+    # ---------------------------------
+    # STEP 5: Train ML Models
+    # ---------------------------------
 
     print("Training ML models...")
 
@@ -145,12 +146,13 @@ def run_pipeline(symbol=SYMBOL):
 
     lr_prediction = predictions["lr_prediction"]
     rf_prediction = predictions["rf_prediction"]
+
     ml_prediction = predictions["ensemble_prediction"]
 
 
-    # ----------------------------------
-    # Step 6: Train LSTM model
-    # ----------------------------------
+    # ---------------------------------
+    # STEP 6: Train LSTM
+    # ---------------------------------
 
     print("Training LSTM model...")
 
@@ -163,11 +165,15 @@ def run_pipeline(symbol=SYMBOL):
     )
 
 
-    # ----------------------------------
-    # Step 7: Ensemble prediction
-    # ----------------------------------
+    # ---------------------------------
+    # STEP 7: Weighted Ensemble
+    # ---------------------------------
 
-    prediction = (ml_prediction + lstm_prediction) / 2
+    prediction = (
+        (lr_prediction * 0.2) +
+        (rf_prediction * 0.3) +
+        (lstm_prediction * 0.5)
+    )
 
     current_price = df_features["close"].iloc[-1]
 
@@ -175,9 +181,9 @@ def run_pipeline(symbol=SYMBOL):
     print("Predicted price:", prediction)
 
 
-    # ----------------------------------
-    # Step 8: Confidence scoring
-    # ----------------------------------
+    # ---------------------------------
+    # STEP 8: Confidence Score
+    # ---------------------------------
 
     confidence = calculate_confidence(
         lr_prediction,
@@ -187,12 +193,12 @@ def run_pipeline(symbol=SYMBOL):
         sentiment_score
     )
 
-    print("Confidence score:", confidence)
+    print("Confidence:", confidence)
 
 
-    # ----------------------------------
-    # Step 9: Generate trading signal
-    # ----------------------------------
+    # ---------------------------------
+    # STEP 9: Generate Signal
+    # ---------------------------------
 
     if confidence >= CONFIDENCE_THRESHOLD:
 
@@ -201,29 +207,28 @@ def run_pipeline(symbol=SYMBOL):
             df_features
         )
 
-        print("Trading signal:", signal)
-
     else:
 
         signal = "HOLD"
 
-        print("Signal blocked (low confidence)")
+    print("Signal:", signal)
 
 
-    # ----------------------------------
-    # Step 10: Execute trade
-    # ----------------------------------
+    # ---------------------------------
+    # STEP 10: Execute Trade
+    # Supports Paper / Binance / QX
+    # ---------------------------------
 
     if signal != "HOLD":
 
         execute_trade(signal, current_price)
 
 
-    # ----------------------------------
-    # Step 11: Backtest strategy
-    # ----------------------------------
+    # ---------------------------------
+    # STEP 11: Backtesting
+    # ---------------------------------
 
-    print("\nRunning backtest simulation...")
+    print("Running backtest...")
 
     backtest_results = backtest_strategy(
         df_features,
@@ -232,12 +237,12 @@ def run_pipeline(symbol=SYMBOL):
         generate_signal
     )
 
-    print("Backtest completed")
+    print("Backtest finished")
 
 
-    print("\n----------------------------------")
-    print("Pipeline completed")
-    print("----------------------------------\n")
+    print("\n==============================")
+    print("Pipeline Completed")
+    print("==============================\n")
 
 
     return {
