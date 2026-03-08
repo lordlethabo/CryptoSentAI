@@ -1,15 +1,19 @@
 import numpy as np
+
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 
 from src.feature_engineering import get_feature_columns
 
 
+# ---------------------------------------------------
+# Prepare training data
+# ---------------------------------------------------
+
 def prepare_training_data(df):
-    """
-    Split dataframe into features and target.
-    """
 
     features = get_feature_columns()
 
@@ -20,55 +24,75 @@ def prepare_training_data(df):
     return X, y
 
 
+# ---------------------------------------------------
+# Train base models
+# ---------------------------------------------------
+
 def train_models(df):
-    """
-    Train multiple ML models.
-    """
 
     X, y = prepare_training_data(df)
 
-    # Linear Regression
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.2,
+        shuffle=False
+    )
+
+    # Linear model
     lr_model = LinearRegression()
 
     # Random Forest
     rf_model = RandomForestRegressor(
-        n_estimators=200,
-        max_depth=10,
+        n_estimators=300,
+        max_depth=12,
         random_state=42
     )
 
-    lr_model.fit(X, y)
+    # Gradient Boosting
+    gb_model = GradientBoostingRegressor(
+        n_estimators=200,
+        learning_rate=0.05,
+        max_depth=6
+    )
 
-    rf_model.fit(X, y)
+    lr_model.fit(X_train, y_train)
 
-    return lr_model, rf_model
+    rf_model.fit(X_train, y_train)
+
+    gb_model.fit(X_train, y_train)
+
+    return lr_model, rf_model, gb_model
 
 
-def evaluate_models(lr_model, rf_model, df):
-    """
-    Evaluate model performance.
-    """
+# ---------------------------------------------------
+# Model evaluation
+# ---------------------------------------------------
+
+def evaluate_models(lr_model, rf_model, gb_model, df):
 
     X, y = prepare_training_data(df)
 
     lr_pred = lr_model.predict(X)
-
     rf_pred = rf_model.predict(X)
-
-    lr_mse = mean_squared_error(y, lr_pred)
-
-    rf_mse = mean_squared_error(y, rf_pred)
+    gb_pred = gb_model.predict(X)
 
     return {
-        "linear_regression_mse": lr_mse,
-        "random_forest_mse": rf_mse
+
+        "lr_mse": mean_squared_error(y, lr_pred),
+
+        "rf_mse": mean_squared_error(y, rf_pred),
+
+        "gb_mse": mean_squared_error(y, gb_pred)
+
     }
 
 
-def predict_next_price(lr_model, rf_model, df):
-    """
-    Predict next price using ensemble of models.
-    """
+# ---------------------------------------------------
+# Ensemble prediction
+# ---------------------------------------------------
+
+def predict_next_price(lr_model, rf_model, gb_model, df):
 
     features = get_feature_columns()
 
@@ -80,10 +104,26 @@ def predict_next_price(lr_model, rf_model, df):
 
     rf_prediction = rf_model.predict(X_latest)[0]
 
-    prediction = (lr_prediction + rf_prediction) / 2
+    gb_prediction = gb_model.predict(X_latest)[0]
+
+    # Weighted ensemble
+    prediction = (
+
+        (lr_prediction * 0.15) +
+
+        (rf_prediction * 0.35) +
+
+        (gb_prediction * 0.50)
+
+    )
 
     return {
+
         "lr_prediction": lr_prediction,
+
         "rf_prediction": rf_prediction,
+
+        "gb_prediction": gb_prediction,
+
         "ensemble_prediction": prediction
     }
