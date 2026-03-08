@@ -6,13 +6,14 @@ from sklearn.preprocessing import MinMaxScaler
 
 def create_sequences(data, window_size=10):
     """
-    Convert time-series data into LSTM sequences.
+    Convert time series data into LSTM sequences.
     """
 
     X = []
     y = []
 
     for i in range(len(data) - window_size):
+
         X.append(data[i:i + window_size])
         y.append(data[i + window_size])
 
@@ -27,6 +28,7 @@ def prepare_lstm_data(df, window_size=10):
     prices = df["close"].values.reshape(-1, 1)
 
     scaler = MinMaxScaler()
+
     scaled_prices = scaler.fit_transform(prices)
 
     X, y = create_sequences(scaled_prices, window_size)
@@ -38,7 +40,7 @@ def prepare_lstm_data(df, window_size=10):
 
 def build_lstm_model(window_size=10):
     """
-    Build LSTM neural network architecture.
+    Build LSTM neural network.
     """
 
     model = Sequential()
@@ -57,7 +59,7 @@ def build_lstm_model(window_size=10):
 
 def train_lstm(df, window_size=10, epochs=10):
     """
-    Train LSTM model using historical closing prices.
+    Train LSTM model.
     """
 
     X, y, scaler = prepare_lstm_data(df, window_size)
@@ -77,7 +79,7 @@ def train_lstm(df, window_size=10, epochs=10):
 
 def predict_lstm(model, scaler, df, window_size=10):
     """
-    Generate next price prediction using trained LSTM.
+    Generate next price prediction using LSTM.
     """
 
     prices = df["close"].values.reshape(-1, 1)
