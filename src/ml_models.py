@@ -1,30 +1,20 @@
-
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error
 
-
-FEATURE_COLUMNS = [
-    "close",
-    "sentiment",
-    "price_change",
-    "rolling_mean",
-    "volatility",
-    "momentum",
-    "sma_5",
-    "sma_10",
-    "ema_10",
-    "rsi"
-]
+from src.feature_engineering import get_feature_columns
 
 
 def prepare_training_data(df):
     """
-    Extract features and target from the feature-engineered dataframe.
+    Split dataframe into features and target.
     """
 
-    X = df[FEATURE_COLUMNS]
+    features = get_feature_columns()
+
+    X = df[features]
+
     y = df["target"]
 
     return X, y
@@ -32,12 +22,15 @@ def prepare_training_data(df):
 
 def train_models(df):
     """
-    Train Linear Regression and Random Forest models.
+    Train multiple ML models.
     """
 
     X, y = prepare_training_data(df)
 
+    # Linear Regression
     lr_model = LinearRegression()
+
+    # Random Forest
     rf_model = RandomForestRegressor(
         n_estimators=200,
         max_depth=10,
@@ -45,6 +38,7 @@ def train_models(df):
     )
 
     lr_model.fit(X, y)
+
     rf_model.fit(X, y)
 
     return lr_model, rf_model
@@ -52,47 +46,44 @@ def train_models(df):
 
 def evaluate_models(lr_model, rf_model, df):
     """
-    Evaluate model performance using Mean Squared Error.
+    Evaluate model performance.
     """
 
     X, y = prepare_training_data(df)
 
-    pred_lr = lr_model.predict(X)
-    pred_rf = rf_model.predict(X)
+    lr_pred = lr_model.predict(X)
 
-    mse_lr = mean_squared_error(y, pred_lr)
-    mse_rf = mean_squared_error(y, pred_rf)
+    rf_pred = rf_model.predict(X)
+
+    lr_mse = mean_squared_error(y, lr_pred)
+
+    rf_mse = mean_squared_error(y, rf_pred)
 
     return {
-        "linear_regression_mse": mse_lr,
-        "random_forest_mse": mse_rf
+        "linear_regression_mse": lr_mse,
+        "random_forest_mse": rf_mse
     }
 
 
-def ensemble_prediction(lr_model, rf_model, feature_row):
+def predict_next_price(lr_model, rf_model, df):
     """
-    Combine predictions from multiple models.
-    """
-
-    pred_lr = lr_model.predict(feature_row)[0]
-    pred_rf = rf_model.predict(feature_row)[0]
-
-    prediction = (pred_lr + pred_rf) / 2
-
-    return prediction
-
-
-def make_predictions(lr_model, rf_model, df):
-    """
-    Predict the next price using the most recent feature row.
+    Predict next price using ensemble of models.
     """
 
-    latest_features = df[FEATURE_COLUMNS].iloc[-1:]
+    features = get_feature_columns()
 
-    prediction = ensemble_prediction(
-        lr_model,
-        rf_model,
-        latest_features
-    )
+    latest_row = df.iloc[-1:]
 
-    return prediction
+    X_latest = latest_row[features]
+
+    lr_prediction = lr_model.predict(X_latest)[0]
+
+    rf_prediction = rf_model.predict(X_latest)[0]
+
+    prediction = (lr_prediction + rf_prediction) / 2
+
+    return {
+        "lr_prediction": lr_prediction,
+        "rf_prediction": rf_prediction,
+        "ensemble_prediction": prediction
+    }
