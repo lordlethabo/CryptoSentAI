@@ -1,54 +1,12 @@
 import pandas as pd
+import numpy as np
 
 
-def build_features(df, sentiment_score):
-    """
-    Build machine learning features from market data
-    and sentiment signal.
-    """
-
-    df = df.copy()
-
-    # Add sentiment as a feature
-    df["sentiment"] = sentiment_score
-
-    # Price returns
-    df["price_change"] = df["close"].pct_change()
-
-    # Rolling statistics
-    df["rolling_mean_3"] = df["close"].rolling(window=3).mean()
-    df["rolling_mean_7"] = df["close"].rolling(window=7).mean()
-
-    # Volatility
-    df["volatility"] = df["close"].rolling(window=5).std()
-
-    # Momentum
-    df["momentum"] = df["close"] - df["close"].shift(3)
-
-    # Moving averages
-    df["sma_5"] = df["close"].rolling(window=5).mean()
-    df["sma_10"] = df["close"].rolling(window=10).mean()
-
-    # Exponential moving average
-    df["ema_10"] = df["close"].ewm(span=10).mean()
-
-    # Relative Strength Index
-    df["rsi"] = calculate_rsi(df["close"], period=14)
-
-    # Target variable (next step price)
-    df["target"] = df["close"].shift(-1)
-
-    df = df.dropna()
-
-    df.reset_index(drop=True, inplace=True)
-
-    return df
-
+# -----------------------------------------------------
+# RSI
+# -----------------------------------------------------
 
 def calculate_rsi(series, period=14):
-    """
-    Compute Relative Strength Index (RSI).
-    """
 
     delta = series.diff()
 
@@ -65,21 +23,150 @@ def calculate_rsi(series, period=14):
     return rsi
 
 
+# -----------------------------------------------------
+# MACD
+# -----------------------------------------------------
+
+def calculate_macd(series):
+
+    ema12 = series.ewm(span=12).mean()
+    ema26 = series.ewm(span=26).mean()
+
+    macd = ema12 - ema26
+    signal = macd.ewm(span=9).mean()
+
+    return macd, signal
+
+
+# -----------------------------------------------------
+# Bollinger Bands
+# -----------------------------------------------------
+
+def calculate_bollinger(series, window=20):
+
+    sma = series.rolling(window).mean()
+
+    std = series.rolling(window).std()
+
+    upper = sma + (2 * std)
+
+    lower = sma - (2 * std)
+
+    return upper, lower
+
+
+# -----------------------------------------------------
+# VWAP
+# -----------------------------------------------------
+
+def calculate_vwap(df):
+
+    typical_price = (df["high"] + df["low"] + df["close"]) / 3
+
+    vwap = (typical_price * df["volume"]).cumsum() / df["volume"].cumsum()
+
+    return vwap
+
+
+# -----------------------------------------------------
+# Feature builder
+# -----------------------------------------------------
+
+def build_features(df, sentiment_score):
+
+    df = df.copy()
+
+    # sentiment feature
+    df["sentiment"] = sentiment_score
+
+    # price change
+    df["price_change"] = df["close"].pct_change()
+
+    # momentum
+    df["momentum"] = df["close"] - df["close"].shift(3)
+
+    # volatility
+    df["volatility"] = df["close"].rolling(5).std()
+
+    # moving averages
+    df["sma_5"] = df["close"].rolling(5).mean()
+    df["sma_10"] = df["close"].rolling(10).mean()
+
+    df["ema_10"] = df["close"].ewm(span=10).mean()
+    df["ema_20"] = df["close"].ewm(span=20).mean()
+
+    # trend strength
+    df["trend_strength"] = (df["ema_10"] - df["ema_20"]) / df["close"]
+
+    # RSI
+    df["rsi"] = calculate_rsi(df["close"])
+
+    # MACD
+    macd, macd_signal = calculate_macd(df["close"])
+
+    df["macd"] = macd
+    df["macd_signal"] = macd_signal
+
+    # Bollinger Bands
+    upper, lower = calculate_bollinger(df["close"])
+
+    df["bollinger_upper"] = upper
+    df["bollinger_lower"] = lower
+
+    # VWAP
+    df["vwap"] = calculate_vwap(df)
+
+    # volume indicators
+    df["volume_change"] = df["volume"].pct_change()
+
+    df["volume_ma"] = df["volume"].rolling(5).mean()
+
+    # target
+    df["target"] = df["close"].shift(-1)
+
+    df = df.dropna()
+
+    df.reset_index(drop=True, inplace=True)
+
+    return df
+
+
+# -----------------------------------------------------
+# Feature list used by ML models
+# -----------------------------------------------------
+
 def get_feature_columns():
-    """
-    List of ML features used for training.
-    """
 
     return [
+
         "close",
+
         "sentiment",
+
         "price_change",
-        "rolling_mean_3",
-        "rolling_mean_7",
-        "volatility",
+
         "momentum",
+
+        "volatility",
+
+        "trend_strength",
+
         "sma_5",
         "sma_10",
+
         "ema_10",
-        "rsi"
+        "ema_20",
+
+        "rsi",
+
+        "macd",
+        "macd_signal",
+
+        "bollinger_upper",
+        "bollinger_lower",
+
+        "vwap",
+
+        "volume_change",
+        "volume_ma"
     ]
