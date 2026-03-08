@@ -9,9 +9,9 @@ from sklearn.metrics import mean_squared_error
 from src.feature_engineering import get_feature_columns
 
 
-# ---------------------------------------------------
+# ----------------------------------------------------
 # Prepare training data
-# ---------------------------------------------------
+# ----------------------------------------------------
 
 def prepare_training_data(df):
 
@@ -24,9 +24,9 @@ def prepare_training_data(df):
     return X, y
 
 
-# ---------------------------------------------------
+# ----------------------------------------------------
 # Train base models
-# ---------------------------------------------------
+# ----------------------------------------------------
 
 def train_models(df):
 
@@ -39,7 +39,7 @@ def train_models(df):
         shuffle=False
     )
 
-    # Linear model
+    # Linear Regression
     lr_model = LinearRegression()
 
     # Random Forest
@@ -51,7 +51,7 @@ def train_models(df):
 
     # Gradient Boosting
     gb_model = GradientBoostingRegressor(
-        n_estimators=200,
+        n_estimators=250,
         learning_rate=0.05,
         max_depth=6
     )
@@ -65,9 +65,9 @@ def train_models(df):
     return lr_model, rf_model, gb_model
 
 
-# ---------------------------------------------------
-# Model evaluation
-# ---------------------------------------------------
+# ----------------------------------------------------
+# Evaluate models
+# ----------------------------------------------------
 
 def evaluate_models(lr_model, rf_model, gb_model, df):
 
@@ -77,20 +77,22 @@ def evaluate_models(lr_model, rf_model, gb_model, df):
     rf_pred = rf_model.predict(X)
     gb_pred = gb_model.predict(X)
 
+    lr_mse = mean_squared_error(y, lr_pred)
+
+    rf_mse = mean_squared_error(y, rf_pred)
+
+    gb_mse = mean_squared_error(y, gb_pred)
+
     return {
-
-        "lr_mse": mean_squared_error(y, lr_pred),
-
-        "rf_mse": mean_squared_error(y, rf_pred),
-
-        "gb_mse": mean_squared_error(y, gb_pred)
-
+        "linear_regression_mse": lr_mse,
+        "random_forest_mse": rf_mse,
+        "gradient_boosting_mse": gb_mse
     }
 
 
-# ---------------------------------------------------
+# ----------------------------------------------------
 # Ensemble prediction
-# ---------------------------------------------------
+# ----------------------------------------------------
 
 def predict_next_price(lr_model, rf_model, gb_model, df):
 
@@ -106,7 +108,7 @@ def predict_next_price(lr_model, rf_model, gb_model, df):
 
     gb_prediction = gb_model.predict(X_latest)[0]
 
-    # Weighted ensemble
+    # Weighted ensemble prediction
     prediction = (
 
         (lr_prediction * 0.15) +
