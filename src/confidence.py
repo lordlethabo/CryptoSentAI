@@ -1,85 +1,131 @@
 import numpy as np
 
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
 
-def model_agreement_score(predictions):
-    """
-    Measure agreement between multiple model predictions.
-    Lower variance means higher agreement.
-    """
-
-    mean_pred = np.mean(predictions)
-
-    if mean_pred == 0:
-        return 0
-
-    std_dev = np.std(predictions)
-
-    agreement = 1 - (std_dev / abs(mean_pred))
-
-    agreement = max(0, min(agreement, 1))
-
-    return agreement
+from src.feature_engineering import get_feature_columns
 
 
-def price_movement_strength(prediction, current_price):
-    """
-    Measure how significant the predicted move is.
-    Small moves are usually noise.
-    """
+# ----------------------------------------------------
+# Prepare training data
+# ----------------------------------------------------
 
-    movement = abs(prediction - current_price) / current_price
+def prepare_training_data(df):
 
-    score = min(movement * 5, 1)
+    features = get_feature_columns()
 
-    return score
+    X = df[features]
 
+    y = df["target"]
 
-def sentiment_strength(sentiment_score):
-    """
-    Convert sentiment score into a confidence contribution.
-    """
-
-    sentiment_value = abs(sentiment_score)
-
-    sentiment_value = max(0, min(sentiment_value, 1))
-
-    return sentiment_value
+    return X, y
 
 
-def calculate_confidence(
-        lr_prediction,
-        rf_prediction,
-        lstm_prediction,
-        current_price,
-        sentiment_score
-):
-    """
-    Calculate final AI confidence score.
-    """
+# ----------------------------------------------------
+# Train base models
+# ----------------------------------------------------
 
-    predictions = np.array([
-        lr_prediction,
-        rf_prediction,
-        lstm_prediction
-    ])
+def train_models(df):
 
-    avg_prediction = np.mean(predictions)
+    X, y = prepare_training_data(df)
 
-    agreement = model_agreement_score(predictions)
-
-    movement = price_movement_strength(
-        avg_prediction,
-        current_price
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.2,
+        shuffle=False
     )
 
-    sentiment = sentiment_strength(sentiment_score)
+    # Linear Regression
+    lr_model = LinearRegression()
 
-    confidence = (
-        (agreement * 0.4) +
-        (movement * 0.4) +
-        (sentiment * 0.2)
+    # Random Forest
+    rf_model = RandomForestRegressor(
+        n_estimators=300,
+        max_depth=12,
+        random_state=42
     )
 
-    confidence = max(0, min(confidence, 1))
+    # Gradient Boosting
+    gb_model = GradientBoostingRegressor(
+        n_estimators=250,
+        learning_rate=0.05,
+        max_depth=6
+    )
 
-    return confidence
+    lr_model.fit(X_train, y_train)
+
+    rf_model.fit(X_train, y_train)
+
+    gb_model.fit(X_train, y_train)
+
+    return lr_model, rf_model, gb_model
+
+
+# ----------------------------------------------------
+# Evaluate models
+# ----------------------------------------------------
+
+def evaluate_models(lr_model, rf_model, gb_model, df):
+
+    X, y = prepare_training_data(df)
+
+    lr_pred = lr_model.predict(X)
+    rf_pred = rf_model.predict(X)
+    gb_pred = gb_model.predict(X)
+
+    lr_mse = mean_squared_error(y, lr_pred)
+
+    rf_mse = mean_squared_error(y, rf_pred)
+
+    gb_mse = mean_squared_error(y, gb_pred)
+
+    return {
+        "linear_regression_mse": lr_mse,
+        "random_forest_mse": rf_mse,
+        "gradient_boosting_mse": gb_mse
+    }
+
+
+# ----------------------------------------------------
+# Ensemble prediction
+# ----------------------------------------------------
+
+def predict_next_price(lr_model, rf_model, gb_model, df):
+
+    features = get_feature_columns()
+
+    latest_row = df.iloc[-1:]
+
+    X_latest = latest_row[features]
+
+    lr_prediction = lr_model.predict(X_latest)[0]
+
+    rf_prediction = rf_model.predict(X_latest)[0]
+
+    gb_prediction = gb_model.predict(X_latest)[0]
+
+    # Weighted ensemble prediction
+    prediction = (
+
+        (lr_prediction * 0.15) +
+
+        (rf_prediction * 0.35) +
+
+        (gb_prediction * 0.50)
+
+    )
+
+    return {
+
+        "lr_prediction": lr_prediction,
+
+        "rf_prediction": rf_prediction,
+
+        "gb_prediction": gb_prediction,
+
+        "ensemble_prediction": prediction
+    }
