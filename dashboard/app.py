@@ -1,102 +1,99 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 
 from src.pipeline import run_pipeline
+from src.performance_tracker import calculate_performance
 
 
 st.set_page_config(
-    page_title="CryptoSentAI",
+    page_title="CryptoSentAI Dashboard",
     layout="wide"
 )
 
-st.title("CryptoSentAI Dashboard")
 
-st.write(
-"""
-AI-powered crypto intelligence platform combining sentiment analysis,
-machine learning forecasting, and trading strategy backtesting.
-"""
-)
+st.title("CryptoSentAI Trading Dashboard")
 
 
-st.sidebar.header("API Configuration")
+# ------------------------------------------------
+# Run AI pipeline
+# ------------------------------------------------
 
-api_key = st.sidebar.text_input("Binance API Key")
+if st.button("Run AI Analysis"):
 
-api_secret = st.sidebar.text_input(
-    "Binance API Secret",
-    type="password"
-)
+    results = run_pipeline()
 
-symbol = st.sidebar.text_input(
-    "Trading Pair",
-    value="BTCUSDT"
-)
-
-
-if st.sidebar.button("Run Analysis"):
-
-    with st.spinner("Running CryptoSentAI pipeline..."):
-
-        result = run_pipeline(api_key, api_secret, symbol)
-
-
-    st.header("Market Prediction")
+    st.subheader("Market Prediction")
 
     col1, col2, col3 = st.columns(3)
 
     col1.metric(
         "Current Price",
-        f"{result['current_price']:.2f}"
+        round(results["current_price"], 2)
     )
 
     col2.metric(
         "Predicted Price",
-        f"{result['prediction']:.2f}"
+        round(results["prediction"], 2)
     )
 
     col3.metric(
-        "Trading Signal",
-        result["signal"]
+        "Confidence Score",
+        round(results["confidence"], 2)
     )
 
+    st.subheader("Trading Signal")
 
-    st.header("Sentiment Analysis")
+    st.write(results["signal"])
 
-    st.write(
-        "Market Sentiment Score:",
-        result["sentiment"]
+    st.subheader("Sentiment Score")
+
+    st.write(results["sentiment"])
+
+
+# ------------------------------------------------
+# Performance statistics
+# ------------------------------------------------
+
+st.subheader("Strategy Performance")
+
+stats = calculate_performance()
+
+if stats:
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "Total Trades",
+        stats["total_trades"]
     )
 
-
-    st.header("Backtesting Results")
-
-    backtest = result["backtest"]
-
-    st.write(
-        "Strategy Return (%)",
-        round(backtest["strategy_return_percent"], 2)
+    col2.metric(
+        "Win Rate",
+        round(stats["win_rate"] * 100, 2)
     )
 
-    st.write(
-        "Buy & Hold Return (%)",
-        round(backtest["buy_hold_return_percent"], 2)
+    col3.metric(
+        "Total Profit",
+        round(stats["total_profit"], 2)
     )
 
+else:
 
-    st.header("Portfolio Performance")
+    st.write("No trade history yet.")
 
-    history = backtest["portfolio_history"]
 
-    fig, ax = plt.subplots()
+# ------------------------------------------------
+# Backtest display
+# ------------------------------------------------
 
-    ax.plot(history)
+st.subheader("Backtest Results")
 
-    ax.set_title("Portfolio Value Over Time")
+try:
 
-    ax.set_xlabel("Trade Step")
+    df = pd.read_csv("trade_history.csv")
 
-    ax.set_ylabel("Portfolio Value")
+    st.dataframe(df)
 
-    st.pyplot(fig)
+except:
+
+    st.write("Backtest results not available yet.")
