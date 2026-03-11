@@ -4,7 +4,11 @@ import pandas as pd
 from src.feature_engineering import get_feature_columns
 
 
-def backtest_strategy(df, lr_model, rf_model, signal_function,
+# --------------------------------------------------
+# Backtesting engine
+# --------------------------------------------------
+
+def backtest_strategy(df, lr_model, rf_model, gb_model, signal_function,
                       initial_capital=10000):
 
     capital = initial_capital
@@ -15,15 +19,17 @@ def backtest_strategy(df, lr_model, rf_model, signal_function,
 
     features = get_feature_columns()
 
-    for i in range(20, len(df) - 1):
+    for i in range(30, len(df) - 1):
 
         train = df.iloc[:i]
 
         X_train = train[features]
         y_train = train["target"]
 
+        # retrain models for rolling window simulation
         lr_model.fit(X_train, y_train)
         rf_model.fit(X_train, y_train)
+        gb_model.fit(X_train, y_train)
 
         row = df.iloc[i:i+1]
 
@@ -31,8 +37,17 @@ def backtest_strategy(df, lr_model, rf_model, signal_function,
 
         lr_pred = lr_model.predict(X_test)[0]
         rf_pred = rf_model.predict(X_test)[0]
+        gb_pred = gb_model.predict(X_test)[0]
 
-        prediction = (lr_pred + rf_pred) / 2
+        prediction = (
+
+            (lr_pred * 0.2) +
+
+            (rf_pred * 0.3) +
+
+            (gb_pred * 0.5)
+
+        )
 
         price = row["close"].values[0]
 
@@ -44,8 +59,10 @@ def backtest_strategy(df, lr_model, rf_model, signal_function,
             capital = 0
 
             trade_history.append({
+
                 "type": "BUY",
                 "price": price
+
             })
 
         elif signal == "SELL" and asset > 0:
@@ -54,8 +71,10 @@ def backtest_strategy(df, lr_model, rf_model, signal_function,
             asset = 0
 
             trade_history.append({
+
                 "type": "SELL",
                 "price": price
+
             })
 
         portfolio_value = capital + asset * price
@@ -66,7 +85,9 @@ def backtest_strategy(df, lr_model, rf_model, signal_function,
 
     final_value = capital + asset * final_price
 
-    buy_hold_value = initial_capital * (final_price / df["close"].iloc[0])
+    buy_hold_value = initial_capital * (
+        final_price / df["close"].iloc[0]
+    )
 
     strategy_return = (final_value - initial_capital) / initial_capital
 
@@ -75,16 +96,29 @@ def backtest_strategy(df, lr_model, rf_model, signal_function,
     stats = calculate_statistics(portfolio_values, trade_history)
 
     return {
+
         "initial_capital": initial_capital,
+
         "final_portfolio_value": final_value,
+
         "buy_hold_value": buy_hold_value,
+
         "strategy_return_percent": strategy_return * 100,
+
         "buy_hold_return_percent": buy_hold_return * 100,
+
         "trade_history": trade_history,
+
         "portfolio_history": portfolio_values,
+
         "statistics": stats
+
     }
 
+
+# --------------------------------------------------
+# Strategy statistics
+# --------------------------------------------------
 
 def calculate_statistics(portfolio_values, trades):
 
@@ -119,14 +153,25 @@ def calculate_statistics(portfolio_values, trades):
     win_rate = wins / total_trades if total_trades > 0 else 0
 
     return {
+
         "total_trades": total_trades,
+
         "wins": wins,
+
         "losses": losses,
+
         "win_rate": win_rate,
+
         "sharpe_ratio": sharpe_ratio,
+
         "max_drawdown": max_drawdown
+
     }
 
+
+# --------------------------------------------------
+# Max drawdown
+# --------------------------------------------------
 
 def calculate_max_drawdown(portfolio_values):
 
@@ -137,11 +182,13 @@ def calculate_max_drawdown(portfolio_values):
     for value in portfolio_values:
 
         if value > peak:
+
             peak = value
 
         dd = (peak - value) / peak
 
         if dd > max_dd:
+
             max_dd = dd
 
     return max_dd
