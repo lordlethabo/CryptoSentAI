@@ -1,3 +1,5 @@
+%%writefile src/feature_engineering.py
+
 import pandas as pd
 import numpy as np
 
@@ -16,7 +18,7 @@ def calculate_rsi(series, period=14):
     avg_gain = gain.rolling(period).mean()
     avg_loss = loss.rolling(period).mean()
 
-    rs = avg_gain / avg_loss
+    rs = avg_gain / (avg_loss + 1e-9)
 
     rsi = 100 - (100 / (1 + rs))
 
@@ -29,11 +31,11 @@ def calculate_rsi(series, period=14):
 
 def calculate_macd(series):
 
-    ema12 = series.ewm(span=12).mean()
-    ema26 = series.ewm(span=26).mean()
+    ema12 = series.ewm(span=12, adjust=False).mean()
+    ema26 = series.ewm(span=26, adjust=False).mean()
 
     macd = ema12 - ema26
-    signal = macd.ewm(span=9).mean()
+    signal = macd.ewm(span=9, adjust=False).mean()
 
     return macd, signal
 
@@ -45,11 +47,9 @@ def calculate_macd(series):
 def calculate_bollinger(series, window=20):
 
     sma = series.rolling(window).mean()
-
     std = series.rolling(window).std()
 
     upper = sma + (2 * std)
-
     lower = sma - (2 * std)
 
     return upper, lower
@@ -63,9 +63,34 @@ def calculate_vwap(df):
 
     typical_price = (df["high"] + df["low"] + df["close"]) / 3
 
-    vwap = (typical_price * df["volume"]).cumsum() / df["volume"].cumsum()
+    vwap = (
+        (typical_price * df["volume"]).cumsum()
+        / df["volume"].cumsum()
+    )
 
     return vwap
+
+
+# -----------------------------------------------------
+# ATR (volatility)
+# -----------------------------------------------------
+
+def calculate_atr(df, period=14):
+
+    high_low = df["high"] - df["low"]
+    high_close = abs(df["high"] - df["close"].shift())
+    low_close = abs(df["low"] - df["close"].shift())
+
+    ranges = pd.concat(
+        [high_low, high_close, low_close],
+        axis=1
+    )
+
+    true_range = ranges.max(axis=1)
+
+    atr = true_range.rolling(period).mean()
+
+    return atr
 
 
 # -----------------------------------------------------
@@ -76,27 +101,32 @@ def build_features(df, sentiment_score):
 
     df = df.copy()
 
-    # sentiment feature
+    # Sentiment
     df["sentiment"] = sentiment_score
 
-    # price change
+    # Returns
+    df["returns"] = np.log(df["close"] / df["close"].shift(1))
+
     df["price_change"] = df["close"].pct_change()
 
-    # momentum
-    df["momentum"] = df["close"] - df["close"].shift(3)
+    # Momentum
+    df["momentum_3"] = df["close"] - df["close"].shift(3)
+    df["momentum_7"] = df["close"] - df["close"].shift(7)
 
-    # volatility
-    df["volatility"] = df["close"].rolling(5).std()
+    # Volatility
+    df["volatility"] = df["returns"].rolling(5).std()
 
-    # moving averages
+    # Moving averages
     df["sma_5"] = df["close"].rolling(5).mean()
     df["sma_10"] = df["close"].rolling(10).mean()
 
     df["ema_10"] = df["close"].ewm(span=10).mean()
     df["ema_20"] = df["close"].ewm(span=20).mean()
 
-    # trend strength
-    df["trend_strength"] = (df["ema_10"] - df["ema_20"]) / df["close"]
+    # Trend strength
+    df["trend_strength"] = (
+        df["ema_10"] - df["ema_20"]
+    ) / df["close"]
 
     # RSI
     df["rsi"] = calculate_rsi(df["close"])
@@ -116,12 +146,15 @@ def build_features(df, sentiment_score):
     # VWAP
     df["vwap"] = calculate_vwap(df)
 
-    # volume indicators
+    # ATR
+    df["atr"] = calculate_atr(df)
+
+    # Volume indicators
     df["volume_change"] = df["volume"].pct_change()
 
     df["volume_ma"] = df["volume"].rolling(5).mean()
 
-    # target
+    # Target
     df["target"] = df["close"].shift(-1)
 
     df = df.dropna()
@@ -143,9 +176,12 @@ def get_feature_columns():
 
         "sentiment",
 
+        "returns",
+
         "price_change",
 
-        "momentum",
+        "momentum_3",
+        "momentum_7",
 
         "volatility",
 
@@ -166,6 +202,8 @@ def get_feature_columns():
         "bollinger_lower",
 
         "vwap",
+
+        "atr",
 
         "volume_change",
         "volume_ma"
