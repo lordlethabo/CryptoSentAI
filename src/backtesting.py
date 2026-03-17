@@ -1,3 +1,5 @@
+%%writefile src/backtesting.py
+
 import numpy as np
 import pandas as pd
 
@@ -8,8 +10,16 @@ from src.feature_engineering import get_feature_columns
 # Backtesting engine
 # --------------------------------------------------
 
-def backtest_strategy(df, lr_model, rf_model, gb_model, signal_function,
-                      initial_capital=10000):
+def backtest_strategy(
+    df,
+    lr_model,
+    rf_model,
+    gb_model,
+    signal_function,
+    initial_capital=10000,
+    fee=0.001,
+    slippage=0.0005
+):
 
     capital = initial_capital
     asset = 0
@@ -19,14 +29,16 @@ def backtest_strategy(df, lr_model, rf_model, gb_model, signal_function,
 
     features = get_feature_columns()
 
-    for i in range(30, len(df) - 1):
+    window = 200
 
-        train = df.iloc[:i]
+    for i in range(window, len(df) - 1):
+
+        train = df.iloc[i-window:i]
 
         X_train = train[features]
         y_train = train["target"]
 
-        # retrain models for rolling window simulation
+        # rolling retrain
         lr_model.fit(X_train, y_train)
         rf_model.fit(X_train, y_train)
         gb_model.fit(X_train, y_train)
@@ -42,9 +54,7 @@ def backtest_strategy(df, lr_model, rf_model, gb_model, signal_function,
         prediction = (
 
             (lr_pred * 0.2) +
-
             (rf_pred * 0.3) +
-
             (gb_pred * 0.5)
 
         )
@@ -53,28 +63,38 @@ def backtest_strategy(df, lr_model, rf_model, gb_model, signal_function,
 
         signal = signal_function(prediction, train)
 
+        # --------------------------------------------------
+        # BUY
+        # --------------------------------------------------
+
         if signal == "BUY" and capital > 0:
 
-            asset = capital / price
+            buy_price = price * (1 + slippage)
+
+            asset = (capital * (1 - fee)) / buy_price
+
             capital = 0
 
             trade_history.append({
-
                 "type": "BUY",
-                "price": price
-
+                "price": buy_price
             })
+
+        # --------------------------------------------------
+        # SELL
+        # --------------------------------------------------
 
         elif signal == "SELL" and asset > 0:
 
-            capital = asset * price
+            sell_price = price * (1 - slippage)
+
+            capital = asset * sell_price * (1 - fee)
+
             asset = 0
 
             trade_history.append({
-
                 "type": "SELL",
-                "price": price
-
+                "price": sell_price
             })
 
         portfolio_value = capital + asset * price
@@ -126,13 +146,15 @@ def calculate_statistics(portfolio_values, trades):
 
         return {}
 
+    portfolio_values = np.array(portfolio_values)
+
     returns = np.diff(portfolio_values) / portfolio_values[:-1]
 
     avg_return = np.mean(returns) if len(returns) > 0 else 0
 
     volatility = np.std(returns) if len(returns) > 0 else 0
 
-    sharpe_ratio = avg_return / volatility if volatility > 0 else 0
+    sharpe_ratio = (avg_return / volatility) * np.sqrt(252) if volatility > 0 else 0
 
     max_drawdown = calculate_max_drawdown(portfolio_values)
 
@@ -143,7 +165,10 @@ def calculate_statistics(portfolio_values, trades):
 
         if trades[i]["type"] == "SELL":
 
-            if trades[i]["price"] > trades[i-1]["price"]:
+            entry = trades[i-1]["price"]
+            exit_price = trades[i]["price"]
+
+            if exit_price > entry:
                 wins += 1
             else:
                 losses += 1
@@ -182,13 +207,11 @@ def calculate_max_drawdown(portfolio_values):
     for value in portfolio_values:
 
         if value > peak:
-
             peak = value
 
         dd = (peak - value) / peak
 
         if dd > max_dd:
-
             max_dd = dd
 
     return max_dd
