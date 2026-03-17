@@ -1,3 +1,5 @@
+%%writefile src/pipeline.py
+
 import os
 import asyncio
 from dotenv import load_dotenv
@@ -14,20 +16,27 @@ from src.trade_execution import execute_trade
 from src.backtesting import backtest_strategy
 
 
-load_dotenv()
+# ----------------------------------------------------
+# Load environment variables
+# ----------------------------------------------------
 
+load_dotenv()
 
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
 BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET")
 
 SYMBOL = os.getenv("BINANCE_SYMBOL", "BTCUSDT")
 
-CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 0.80))
+CONFIDENCE_THRESHOLD = float(
+    os.getenv("CONFIDENCE_THRESHOLD", 0.80)
+)
 
 CHANNEL_1 = os.getenv("TELEGRAM_CHANNEL_1")
 CHANNEL_2 = os.getenv("TELEGRAM_CHANNEL_2")
 
-TELEGRAM_LIMIT = int(os.getenv("TELEGRAM_MESSAGE_LIMIT", 50))
+TELEGRAM_LIMIT = int(
+    os.getenv("TELEGRAM_MESSAGE_LIMIT", 50)
+)
 
 
 # ----------------------------------------------------
@@ -38,23 +47,25 @@ async def collect_telegram_messages():
 
     messages = []
 
-    try:
+    channels = [CHANNEL_1, CHANNEL_2]
 
-        if CHANNEL_1:
+    for channel in channels:
 
-            msgs = await fetch_signals(CHANNEL_1, TELEGRAM_LIMIT)
+        if not channel:
+            continue
+
+        try:
+
+            msgs = await fetch_signals(
+                channel,
+                TELEGRAM_LIMIT
+            )
 
             messages.extend(msgs)
 
-        if CHANNEL_2:
+        except Exception as e:
 
-            msgs = await fetch_signals(CHANNEL_2, TELEGRAM_LIMIT)
-
-            messages.extend(msgs)
-
-    except Exception as e:
-
-        print("Telegram error:", e)
+            print(f"Telegram error ({channel}):", e)
 
     return messages
 
@@ -82,7 +93,6 @@ def run_pipeline(symbol=SYMBOL):
     )
 
     if df_price is None or df_price.empty:
-
         raise ValueError("Market data fetch failed")
 
     print("Market rows:", len(df_price))
@@ -144,9 +154,7 @@ def run_pipeline(symbol=SYMBOL):
     )
 
     lr_prediction = predictions["lr_prediction"]
-
     rf_prediction = predictions["rf_prediction"]
-
     gb_prediction = predictions["gb_prediction"]
 
     ml_prediction = predictions["ensemble_prediction"]
@@ -158,9 +166,7 @@ def run_pipeline(symbol=SYMBOL):
 
     print("Training LSTM model...")
 
-    lstm_model, scaler = train_lstm(
-        df_price
-    )
+    lstm_model, scaler = train_lstm(df_price)
 
     lstm_prediction = predict_lstm(
         lstm_model,
@@ -174,19 +180,18 @@ def run_pipeline(symbol=SYMBOL):
     # ------------------------------------------------
 
     prediction = (
-
         (ml_prediction * 0.6) +
-
         (lstm_prediction * 0.4)
-
     )
 
     current_price = df_features["close"].iloc[-1]
 
-    volatility = df_features["volatility"].iloc[-1]
+    volatility = df_features.get(
+        "volatility",
+        df_features["close"].pct_change().std()
+    )
 
     print("Current price:", current_price)
-
     print("Predicted price:", prediction)
 
 
@@ -197,17 +202,11 @@ def run_pipeline(symbol=SYMBOL):
     confidence = calculate_confidence(
 
         lr_prediction,
-
         rf_prediction,
-
         gb_prediction,
-
         lstm_prediction,
-
         current_price,
-
         sentiment_score,
-
         volatility
     )
 
@@ -221,11 +220,8 @@ def run_pipeline(symbol=SYMBOL):
     if confidence >= CONFIDENCE_THRESHOLD:
 
         signal = generate_signal(
-
             prediction,
-
             df_features
-
         )
 
     else:
@@ -241,13 +237,16 @@ def run_pipeline(symbol=SYMBOL):
 
     if signal != "HOLD":
 
-        execute_trade(
+        try:
 
-            signal,
+            execute_trade(
+                signal,
+                current_price
+            )
 
-            current_price
+        except Exception as e:
 
-        )
+            print("Trade execution error:", e)
 
 
     # ------------------------------------------------
@@ -261,13 +260,10 @@ def run_pipeline(symbol=SYMBOL):
         df_features,
 
         lr_model,
-
         rf_model,
-
         gb_model,
 
         generate_signal
-
     )
 
     print("Backtest finished")
@@ -280,15 +276,15 @@ def run_pipeline(symbol=SYMBOL):
 
     return {
 
-        "current_price": current_price,
+        "current_price": float(current_price),
 
-        "prediction": prediction,
+        "prediction": float(prediction),
 
-        "confidence": confidence,
+        "confidence": float(confidence),
 
         "signal": signal,
 
-        "sentiment": sentiment_score,
+        "sentiment": float(sentiment_score),
 
         "telegram_messages": len(telegram_messages),
 
