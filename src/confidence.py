@@ -1,131 +1,94 @@
+%%writefile src/confidence.py
+
 import numpy as np
 
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error
 
-from src.feature_engineering import get_feature_columns
+# ----------------------------------------------------
+# Normalize value between 0 and 1
+# ----------------------------------------------------
+
+def normalize(value, min_val, max_val):
+
+    if max_val - min_val == 0:
+        return 0.5
+
+    return (value - min_val) / (max_val - min_val)
 
 
 # ----------------------------------------------------
-# Prepare training data
+# Calculate prediction strength
 # ----------------------------------------------------
 
-def prepare_training_data(df):
+def prediction_strength(current_price, predicted_price):
 
-    features = get_feature_columns()
+    change = abs(predicted_price - current_price)
 
-    X = df[features]
+    strength = change / current_price
 
-    y = df["target"]
-
-    return X, y
+    return strength
 
 
 # ----------------------------------------------------
-# Train base models
+# Volatility penalty
 # ----------------------------------------------------
 
-def train_models(df):
+def volatility_penalty(df):
 
-    X, y = prepare_training_data(df)
+    if "returns" not in df.columns:
+        return 0.0
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=0.2,
-        shuffle=False
-    )
+    volatility = df["returns"].std()
 
-    # Linear Regression
-    lr_model = LinearRegression()
-
-    # Random Forest
-    rf_model = RandomForestRegressor(
-        n_estimators=300,
-        max_depth=12,
-        random_state=42
-    )
-
-    # Gradient Boosting
-    gb_model = GradientBoostingRegressor(
-        n_estimators=250,
-        learning_rate=0.05,
-        max_depth=6
-    )
-
-    lr_model.fit(X_train, y_train)
-
-    rf_model.fit(X_train, y_train)
-
-    gb_model.fit(X_train, y_train)
-
-    return lr_model, rf_model, gb_model
+    return min(volatility, 0.05)
 
 
 # ----------------------------------------------------
-# Evaluate models
+# Main confidence calculation
 # ----------------------------------------------------
 
-def evaluate_models(lr_model, rf_model, gb_model, df):
+def calculate_confidence(
 
-    X, y = prepare_training_data(df)
+        current_price,
+        ensemble_prediction,
+        sentiment_score,
+        lstm_prediction=None,
+        df=None
+):
 
-    lr_pred = lr_model.predict(X)
-    rf_pred = rf_model.predict(X)
-    gb_pred = gb_model.predict(X)
+    # Prediction strength
+    strength = prediction_strength(current_price, ensemble_prediction)
 
-    lr_mse = mean_squared_error(y, lr_pred)
+    # Normalize sentiment
+    sentiment_norm = (sentiment_score + 1) / 2
 
-    rf_mse = mean_squared_error(y, rf_pred)
+    # LSTM contribution
+    lstm_weight = 0.2
+    lstm_component = 0
 
-    gb_mse = mean_squared_error(y, gb_pred)
+    if lstm_prediction is not None:
 
-    return {
-        "linear_regression_mse": lr_mse,
-        "random_forest_mse": rf_mse,
-        "gradient_boosting_mse": gb_mse
-    }
+        lstm_strength = prediction_strength(current_price, lstm_prediction)
 
+        lstm_component = lstm_strength * lstm_weight
 
-# ----------------------------------------------------
-# Ensemble prediction
-# ----------------------------------------------------
+    # Volatility penalty
+    penalty = 0
 
-def predict_next_price(lr_model, rf_model, gb_model, df):
+    if df is not None:
 
-    features = get_feature_columns()
+        penalty = volatility_penalty(df)
 
-    latest_row = df.iloc[-1:]
+    # Combine signals
+    confidence = (
 
-    X_latest = latest_row[features]
-
-    lr_prediction = lr_model.predict(X_latest)[0]
-
-    rf_prediction = rf_model.predict(X_latest)[0]
-
-    gb_prediction = gb_model.predict(X_latest)[0]
-
-    # Weighted ensemble prediction
-    prediction = (
-
-        (lr_prediction * 0.15) +
-
-        (rf_prediction * 0.35) +
-
-        (gb_prediction * 0.50)
+        (strength * 0.5) +
+        (sentiment_norm * 0.3) +
+        lstm_component -
+        penalty
 
     )
 
-    return {
+    # Clamp between 0 and 1
+    confidence = max(0, min(confidence, 1))
 
-        "lr_prediction": lr_prediction,
-
-        "rf_prediction": rf_prediction,
-
-        "gb_prediction": gb_prediction,
-
-        "ensemble_prediction": prediction
-    }
+    return confidence
