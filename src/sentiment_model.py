@@ -1,89 +1,143 @@
+%%writefile src/sentiment_model.py
+
 import numpy as np
+import re
+
 from transformers import pipeline
 
-# Load Hugging Face sentiment model
-sentiment_pipeline = pipeline("sentiment-analysis")
+
+# -----------------------------------------------------
+# Load financial sentiment model
+# -----------------------------------------------------
+
+sentiment_pipeline = pipeline(
+    "sentiment-analysis",
+    model="ProsusAI/finbert"
+)
 
 
-def score_message(text):
-    """
-    Score a single message using transformer sentiment analysis.
-    Returns a value between -1 and +1.
-    """
+# -----------------------------------------------------
+# Text cleaner
+# -----------------------------------------------------
 
-    try:
+def clean_text(text):
 
-        result = sentiment_pipeline(text)[0]
+    if not isinstance(text, str):
+        return ""
 
-        label = result["label"]
-        score = result["score"]
+    text = text.lower()
 
-        if label.upper() == "POSITIVE":
-            return score
-        else:
-            return -score
+    text = re.sub(r"http\S+", "", text)
+    text = re.sub(r"[^a-zA-Z0-9\s]", " ", text)
 
-    except Exception:
+    text = text.strip()
 
-        return 0
+    return text
 
+
+# -----------------------------------------------------
+# Keyword sentiment boost
+# -----------------------------------------------------
 
 def keyword_sentiment_boost(text):
-    """
-    Adds crypto-specific sentiment weighting
-    """
 
     bullish_keywords = [
         "buy",
         "long",
-        "pump",
-        "breakout",
         "bull",
-        "moon"
+        "breakout",
+        "pump",
+        "moon",
+        "support"
     ]
 
     bearish_keywords = [
         "sell",
         "short",
-        "dump",
         "bear",
-        "crash"
+        "dump",
+        "crash",
+        "resistance"
     ]
 
     score = 0
 
     for word in bullish_keywords:
+
         if word in text:
-            score += 0.1
+
+            score += 0.08
 
     for word in bearish_keywords:
+
         if word in text:
-            score -= 0.1
+
+            score -= 0.08
 
     return score
 
 
+# -----------------------------------------------------
+# Batch sentiment scoring
+# -----------------------------------------------------
+
+def batch_score_messages(messages):
+
+    cleaned = [clean_text(m)[:512] for m in messages]
+
+    try:
+
+        results = sentiment_pipeline(cleaned)
+
+    except Exception:
+
+        return [0] * len(messages)
+
+    scores = []
+
+    for r in results:
+
+        label = r["label"].upper()
+
+        score = r["score"]
+
+        if label == "POSITIVE":
+            scores.append(score)
+
+        elif label == "NEGATIVE":
+            scores.append(-score)
+
+        else:
+            scores.append(0)
+
+    return scores
+
+
+# -----------------------------------------------------
+# Main sentiment analysis
+# -----------------------------------------------------
+
 def analyze_sentiment(messages):
-    """
-    Analyze sentiment across a list of Telegram messages.
-    """
 
     if not messages:
         return 0
 
-    scores = []
+    # Remove duplicates
+    messages = list(set(messages))
 
-    for text in messages:
+    transformer_scores = batch_score_messages(messages)
 
-        transformer_score = score_message(text)
+    final_scores = []
+
+    for text, transformer_score in zip(messages, transformer_scores):
 
         keyword_score = keyword_sentiment_boost(text)
 
-        final_score = transformer_score + keyword_score
+        score = transformer_score + keyword_score
 
-        scores.append(final_score)
+        final_scores.append(score)
 
-    sentiment = np.mean(scores)
+    sentiment = np.mean(final_scores)
 
     sentiment = max(min(sentiment, 1), -1)
 
